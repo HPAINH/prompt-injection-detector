@@ -54,11 +54,23 @@ def _rows(texts, labels, source, attack_types=None) -> pd.DataFrame:
     return df[df["lang"].isin(["ru", "en"])][COLUMNS]
 
 
-def _load(name: str) -> pd.DataFrame:
+def _load(name: str, revision: str | None = None) -> pd.DataFrame:
     from datasets import load_dataset
 
-    ds = load_dataset(name)
+    ds = load_dataset(name, revision=revision) if revision else load_dataset(name)
     return pd.concat([ds[s].to_pandas() for s in ds.keys()], ignore_index=True)
+
+
+def filter_origins(df: pd.DataFrame, origins: list[str] | None, cap: int | None, seed: int = 42) -> pd.DataFrame:
+    origin = df["source"].str.split("|").str[-1]
+    if origins:
+        keep = origin.str.lower().apply(lambda o: any(k.lower() in o for k in origins))
+        df, origin = df[keep], origin[keep]
+    if cap and len(df):
+        df = df.sample(frac=1.0, random_state=seed)
+        origin = origin.loc[df.index]
+        df = df[(origin.groupby(origin).cumcount() < cap).values]
+    return df.reset_index(drop=True)
 
 
 def map_class(value) -> str | None:
@@ -85,24 +97,42 @@ def load_gandalf() -> pd.DataFrame:
     return _rows(df[_pick(df, "text", "prompt")], [1] * len(df), "Lakera/gandalf_ignore_instructions")
 
 
-def load_ru_injections() -> pd.DataFrame:
+def load_ru_injections(origins: list[str] | None = None, origin_cap: int | None = None, seed: int = 42) -> pd.DataFrame:
     name = "dmtrdr/russian_prompt_injections"
     df = _load(name)
     text = df[_pick(df, "prompt_ru", "text", "prompt")]
-    cls = df[_pick(df, "class", "category", "type")] if any(c in df.columns for c in ("class", "category", "type")) else pd.Series([None] * len(df))
+    cls_col = next((c for c in ("class", "category", "type") if c in df.columns), None)
+    cls = df[cls_col] if cls_col else pd.Series([None] * len(df))
     orig = df["source"].astype(str) if "source" in df.columns else pd.Series([""] * len(df))
     out = _rows(text, [1] * len(df), [f"{name}|{o}" for o in orig], [map_class(c) for c in cls])
-    return out[out["lang"] == "ru"]
+    out = out[out["lang"] == "ru"]
+    return filter_origins(out, origins, origin_cap, seed)
+
+
+RU_BENIGN_CANDIDATES = [
+    ("IlyaGusev/ru_turbo_alpaca", "refs/convert/parquet"),
+    ("d0rj/alpaca-cleaned-ru", None),
+]
 
 
 def load_ru_alpaca() -> pd.DataFrame:
-    df = _load("IlyaGusev/ru_turbo_alpaca")
-    ins = df[_pick(df, "instruction", "prompt")].fillna("").astype(str)
-    inp = df["input"].fillna("").astype(str) if "input" in df.columns else ""
-    text = (ins + ("\n" + inp).where(inp.str.len() > 0, "")) if "input" in df.columns else ins
-    text = text[text.str.len().between(10, 600)]
-    out = _rows(text, [0] * len(text), "IlyaGusev/ru_turbo_alpaca")
-    return out[out["lang"] == "ru"]
+    errors = []
+    for name, revision in RU_BENIGN_CANDIDATES:
+        try:
+            df = _load(name, revision)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+            continue
+        ins = df[_pick(df, "instruction", "prompt", "question")].fillna("").astype(str)
+        if "input" in df.columns:
+            inp = df["input"].fillna("").astype(str)
+            text = ins + ("\n" + inp).where(inp.str.len() > 0, "")
+        else:
+            text = ins
+        text = text[text.str.len().between(10, 600)]
+        out = _rows(text, [0] * len(text), name)
+        return out[out["lang"] == "ru"]
+    raise RuntimeError("; ".join(errors))
 
 
 LOADERS = {
@@ -115,14 +145,15 @@ LOADERS = {
 
 
 def load_hf_sources(max_per_source: int = 1500, seed: int = 42, overrides: dict | None = None,
-                    only: list[str] | None = None) -> pd.DataFrame:
+                    only: list[str] | None = None, options: dict | None = None) -> pd.DataFrame:
     overrides = overrides or {}
+    options = options or {}
     frames = []
     for name, loader in LOADERS.items():
         if only and name not in only:
             continue
         try:
-            df = loader()
+            df = loader(**options.get(name, {}))
         except Exception as exc:
             log.warning("source %s skipped: %s", name, exc)
             continue

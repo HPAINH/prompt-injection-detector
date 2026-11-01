@@ -62,12 +62,13 @@ class TransformerDetector(Detector):
         def metrics(p):
             return {"f1": f1_score(p.label_ids, p.predictions.argmax(-1))}
 
+        steps = int(np.ceil(len(y) / batch_size) * epochs)
         args = TrainingArguments(
             output_dir=str(Path(out_dir) / "checkpoints"), num_train_epochs=epochs, learning_rate=lr,
             per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size * 2,
             weight_decay=weight_decay, eval_strategy="epoch", save_strategy="epoch", save_total_limit=1,
             load_best_model_at_end=True, metric_for_best_model="f1", greater_is_better=True,
-            warmup_ratio=0.1, logging_steps=20, seed=seed, report_to="none",
+            warmup_steps=max(1, int(0.1 * steps)), logging_steps=20, seed=seed, report_to="none",
             fp16=torch.cuda.is_available(),
         )
         trainer = WeightedTrainer(

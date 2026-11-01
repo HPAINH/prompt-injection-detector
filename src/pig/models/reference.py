@@ -14,11 +14,11 @@ class ReferenceDetector(Detector):
         from transformers import pipeline
 
         device = device if device is not None else (0 if torch.cuda.is_available() else -1)
-        self.pipe = pipeline("text-classification", model=model_name, truncation=True, max_length=512, device=device)
+        self.pipe = pipeline("text-classification", model=model_name, device=device)
         self.batch_size = batch_size
 
     def predict_proba(self, texts):
-        res = self.pipe(list(texts), batch_size=self.batch_size, top_k=None)
+        res = self.pipe(list(texts), batch_size=self.batch_size, top_k=None, truncation=True, max_length=512)
         out = []
         for r in res:
             scores = {d["label"].upper(): d["score"] for d in r}

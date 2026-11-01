@@ -43,7 +43,8 @@ def build_dataset(cfg: Config, use_hf: bool = True, embedder=None, translated: p
     parts = [manual] if manual is not None and len(manual) else []
     parts.append(generate_all(cfg, cfg["seed"]))
     if use_hf:
-        parts.append(load_hf_sources(d["max_per_hf_source"], cfg["seed"], d.get("max_per_source_overrides")))
+        parts.append(load_hf_sources(d["max_per_hf_source"], cfg["seed"], d.get("max_per_source_overrides"),
+                                     options=d.get("source_options")))
     if translated is not None and len(translated):
         parts.append(translated)
     raw = pd.concat(parts, ignore_index=True)

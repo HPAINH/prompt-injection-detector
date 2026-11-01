@@ -99,3 +99,17 @@ def test_map_class_and_heldout_patterns():
     })
     out = assign_splits(df, heldout_sources=["lakera"])
     assert out.loc[out["id"] == "a", "split"].item() == "heldout"
+
+
+def test_filter_origins_keeps_allowed_and_caps():
+    from pig.data.sources import filter_origins
+
+    df = pd.DataFrame({
+        "text": [f"t{i}" for i in range(9)],
+        "source": ["d|hackaprompt/x"] * 5 + ["d|nvidia/Aegis"] * 2 + ["d|Lakera/mosscap"] * 2,
+    })
+    out = filter_origins(df, ["hackaprompt", "mosscap"], cap=3)
+    origins = out["source"].str.split("|").str[-1]
+    assert (origins == "hackaprompt/x").sum() == 3
+    assert (origins == "Lakera/mosscap").sum() == 2
+    assert not origins.str.contains("Aegis").any()

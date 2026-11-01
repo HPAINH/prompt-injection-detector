@@ -18,8 +18,12 @@ data:
   heldout_sources: [lakera, gandalf]
   max_per_hf_source: 1500
   max_per_source_overrides:
-    dmtrdr/russian_prompt_injections: 2500
+    dmtrdr/russian_prompt_injections: 5000
     IlyaGusev/ru_turbo_alpaca: 1500
+  source_options:
+    dmtrdr/russian_prompt_injections:
+      origins: [hackaprompt, jackhhao, JailbreakV, openai_synthetic, mosscap]
+      origin_cap: 800
   manual_file: data/manual/manual_test.csv
   generator:
     ru_attacks: 700
