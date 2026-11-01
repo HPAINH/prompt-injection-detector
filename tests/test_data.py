@@ -58,8 +58,8 @@ def test_near_duplicate_groups():
 def test_dataset_has_no_leakage(dataset):
     df, stats = dataset
     assert all(v == 0 for v in stats["leakage"].values())
-    assert set(df["split"]) == {"train", "val", "test", "heldout"}
-    for split, part in df.groupby("split"):
+    assert {"train", "val", "test", "heldout"} <= set(df["split"])
+    for split, part in df[df["split"] != "manual"].groupby("split"):
         assert set(part["label"]) == {0, 1}, split
         assert set(part["lang"]) == {"ru", "en"}, split
     assert df[(df["split"] == "test")]["is_hard_negative"].any()
@@ -71,3 +71,31 @@ def test_heldout_templates_not_in_train(dataset):
     held = set(base[(df["split"] == "heldout") & (base != "")])
     train = set(base[(df["split"] == "train") & (base != "")])
     assert not (held & train)
+
+
+def test_manual_split_is_isolated(dataset):
+    df, _ = dataset
+    manual = df[df["split"] == "manual"]
+    assert len(manual) == 5
+    assert (manual["source"] == "manual").all()
+    assert not df[(df["split"] != "manual") & (df["source"] == "manual")].shape[0]
+    assert not set(manual["id"]) & set(df[df["split"] != "manual"]["id"])
+    assert manual["is_hard_negative"].sum() == 1
+    assert set(manual[manual["label"] == 1]["attack_type"]) <= {"override", "leak", "roleplay", "obfuscation"}
+
+
+def test_map_class_and_heldout_patterns():
+    from pig.data.sources import map_class
+    from pig.data.split import assign_splits
+
+    assert map_class("adversarial_suffix") == "obfuscation"
+    assert map_class("virtualization") == "roleplay"
+    assert map_class("unknown_xyz") is None
+    df = pd.DataFrame({
+        "id": list("abcdef"), "text": list("abcdef"), "label": [1, 0, 1, 0, 1, 0],
+        "attack_type": ["override", "none"] * 3, "lang": ["ru"] * 6,
+        "source": ["dmtrdr/russian_prompt_injections|Lakera", "x", "y", "x", "y", "x"],
+        "template_id": [""] * 6, "is_hard_negative": [False] * 6,
+    })
+    out = assign_splits(df, heldout_sources=["lakera"])
+    assert out.loc[out["id"] == "a", "split"].item() == "heldout"

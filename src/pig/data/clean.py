@@ -15,9 +15,14 @@ def clean(df: pd.DataFrame, min_len: int = 3, max_len: int = 2000) -> pd.DataFra
     df["id"] = df["text"].map(text_id)
     df["template_id"] = df["template_id"].fillna("").astype(str)
     df["is_hard_negative"] = df["is_hard_negative"].fillna(False).astype(bool)
+    df["_prio"] = (df["source"] == "manual").astype(int)
+    df = df.sort_values("_prio", ascending=False, kind="stable")
     conflicts = df.groupby("id")["label"].nunique()
-    df = df[~df["id"].isin(conflicts[conflicts > 1].index)]
-    df = df.drop_duplicates("id", keep="first")
+    conflict_ids = set(conflicts[conflicts > 1].index)
+    has_manual = set(df.loc[df["_prio"] == 1, "id"])
+    drop = df["id"].isin(conflict_ids) & ~(df["id"].isin(has_manual) & (df["_prio"] == 1))
+    df = df[~drop]
+    df = df.drop_duplicates("id", keep="first").sort_index()
     return df[COLUMNS].reset_index(drop=True)
 
 
@@ -54,5 +59,6 @@ def near_duplicate_groups(emb: np.ndarray, threshold: float = 0.95, block: int =
 def drop_label_conflicting_groups(df: pd.DataFrame, groups: np.ndarray) -> tuple[pd.DataFrame, np.ndarray]:
     g = pd.Series(groups, index=df.index)
     mixed = df.groupby(g)["label"].nunique()
-    keep = ~g.isin(mixed[mixed > 1].index)
+    bad = g.isin(mixed[mixed > 1].index)
+    keep = ~bad | (df["source"] == "manual")
     return df[keep.values].reset_index(drop=True), groups[keep.values]

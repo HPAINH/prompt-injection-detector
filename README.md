@@ -13,14 +13,14 @@
 
 Заполняется из `reports/summary_test.csv` и `reports/summary_heldout.csv` после этапа 05.
 
-| Модель | F1 test | F1 held-out | FPR норма | FPR hard neg. | p95, мс (CPU) |
-|---|---|---|---|---|---|
-| M0 правила | | | | | |
-| M1 TF-IDF + LogReg | | | | | |
-| M2 эмбеддинг + отклонение | | | | | |
-| M3 rubert-tiny2 | | | | | |
-| M4 каскад M2 → M3 | | | | | |
-| REF protectai/deberta-v3 | | | | | |
+| Модель | F1 test | F1 held-out | F1 manual | FPR норма | FPR hard neg. | p95, мс (CPU) |
+|---|---|---|---|---|---|---|
+| M0 правила | | | | | | |
+| M1 TF-IDF + LogReg | | | | | | |
+| M2 эмбеддинг + отклонение | | | | | | |
+| M3 rubert-tiny2 | | | | | | |
+| M4 каскад M2 → M3 | | | | | | |
+| REF protectai/deberta-v3 | | | | | | |
 
 Демо: *ссылка на HuggingFace Space*
 
@@ -44,11 +44,12 @@
 | Класс | Источники |
 |---|---|
 | Атаки EN | `deepset/prompt-injections`, `jackhhao/jailbreak-classification`, `Lakera/gandalf_ignore_instructions` |
-| Атаки RU | генератор шаблонов (`src/pig/data/generators.py`) + машинный перевод части EN-атак |
-| Норма | генератор банковских запросов + легитимная часть открытых датасетов |
+| Атаки RU | `dmtrdr/russian_prompt_injections` (Apache 2.0) + генератор шаблонов (`src/pig/data/generators.py`) + машинный перевод части EN-атак |
+| Норма | `IlyaGusev/ru_turbo_alpaca` + генератор банковских запросов + легитимная часть открытых EN-датасетов |
 | Hard negatives | легитимные запросы со словами-триггерами |
+| Ручной тест-сет | запросы, написанные людьми вручную (`data/manual/`), только для оценки |
 
-Разбиение: train/val/test 70/15/15 + **held-out** (20% шаблонов генератора и источник Lakera целиком). Почти-дубли (cos > 0.95) объединяются в группы и попадают в одну выборку.
+Разбиение: train/val/test 70/15/15 + **held-out** (20% шаблонов генератора и все строки с происхождением Lakera/Gandalf) + **manual** (ручной тест-сет). Почти-дубли (cos > 0.95) объединяются в группы и попадают в одну выборку; почти-дубли ручных запросов удаляются из остальных выборок.
 
 ## Запуск в Google Colab
 

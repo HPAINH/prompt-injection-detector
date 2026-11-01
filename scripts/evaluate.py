@@ -20,10 +20,10 @@ def main() -> None:
     splits = load_data(cfg)
     models = load_models(cfg, args.embedder, not args.no_transformer, args.reference)
     res = evaluate_all(cfg, models, splits, args.latency_n, splits["val"])
-    print(summary_table(res["test"]).to_string(index=False))
-    print()
-    print(summary_table(res["heldout"]).to_string(index=False))
-    print()
+    for split, rows in res.items():
+        print(f"== {split}")
+        print(summary_table(rows).to_string(index=False))
+        print()
     print(ablation_table(res).to_string(index=False))
 
 

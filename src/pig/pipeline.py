@@ -125,17 +125,16 @@ def evaluate_all(cfg: Config, models: dict[str, Detector], splits: dict[str, pd.
                  latency_n: int = 200, val: pd.DataFrame | None = None) -> dict:
     reports = cfg.path("reports")
     max_fpr = cfg["threshold"]["max_fpr"]
-    results: dict[str, list[dict]] = {"test": [], "heldout": []}
-    curves: dict[str, dict] = {"test": {}, "heldout": {}}
+    eval_splits = [s for s in ["test", "heldout", "manual"] if s in splits and not splits[s].empty]
+    results: dict[str, list[dict]] = {s: [] for s in eval_splits}
+    curves: dict[str, dict] = {s: {} for s in eval_splits}
     robust, errors = [], {}
     for name, det in models.items():
         if name.startswith("REF") and val is not None:
             calibrate(det, val, max_fpr)
         lat = measure_latency(det, splits["test"]["text"].tolist(), n=latency_n)
-        for split in ["test", "heldout"]:
-            part = splits.get(split)
-            if part is None or part.empty:
-                continue
+        for split in eval_splits:
+            part = splits[split]
             s = det.predict_proba(part["text"].tolist())
             r = evaluate(name, part, s, det.threshold, lat if split == "test" else None)
             if isinstance(det, CascadeDetector):
@@ -148,10 +147,11 @@ def evaluate_all(cfg: Config, models: dict[str, Detector], splits: dict[str, pd.
         robust.append(robustness_report(det, splits["test"]))
         log.info("evaluated %s", name)
 
-    for split in ["test", "heldout"]:
+    for split in eval_splits:
         if results[split]:
             summary_table(results[split]).to_csv(reports / f"summary_{split}.csv", index=False)
-            plot_curves(curves[split], reports, split)
+            if part_has_both(splits[split]):
+                plot_curves(curves[split], reports, split)
     rob = pd.concat(robust, ignore_index=True) if robust else pd.DataFrame()
     if not rob.empty:
         rob.to_csv(reports / "robustness.csv", index=False)
@@ -167,19 +167,23 @@ def evaluate_all(cfg: Config, models: dict[str, Detector], splits: dict[str, pd.
     if by_type:
         plot_bars(pd.DataFrame(by_type), "attack_type", "recall", "model", "Recall по типам атак (test)", reports / "recall_by_type.png", "Recall")
 
-    payload = {"test": results["test"], "heldout": results["heldout"]}
+    payload = dict(results)
     (reports / "metrics.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=float), encoding="utf-8")
     return payload
 
 
 def ablation_table(results: dict) -> pd.DataFrame:
     rows = []
-    for split in ["test", "heldout"]:
+    for split in ["test", "heldout", "manual"]:
         for r in results.get(split, []):
             if r["model"] in {"M2a_embedding", "M2b_deviation", "M2_semantic"}:
                 rows.append({"split": split, "model": r["model"], "f1": r["f1"], "f1_ci_low": r.get("f1_ci_low"),
                              "f1_ci_high": r.get("f1_ci_high"), "fpr_hard_neg": r["fpr_hard_neg"]})
     return pd.DataFrame(rows)
+
+
+def part_has_both(df: pd.DataFrame) -> bool:
+    return df["label"].nunique() == 2
 
 
 def load_data(cfg: Config) -> dict[str, pd.DataFrame]:

@@ -15,10 +15,14 @@ data:
   near_dup_threshold: 0.95
   split: [0.70, 0.15, 0.15]
   heldout_template_share: 0.2
-  heldout_source: Lakera/gandalf_ignore_instructions
+  heldout_sources: [lakera, gandalf]
   max_per_hf_source: 1500
+  max_per_source_overrides:
+    dmtrdr/russian_prompt_injections: 2500
+    IlyaGusev/ru_turbo_alpaca: 1500
+  manual_file: data/manual/manual_test.csv
   generator:
-    ru_attacks: 1000
+    ru_attacks: 700
     en_attacks: 300
     ru_benign: 1100
     en_benign: 200

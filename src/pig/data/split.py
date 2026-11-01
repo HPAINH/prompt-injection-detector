@@ -28,7 +28,7 @@ def assign_splits(
     df: pd.DataFrame,
     groups: np.ndarray | None = None,
     ratios: tuple[float, float, float] = (0.7, 0.15, 0.15),
-    heldout_source: str | None = None,
+    heldout_sources: list[str] | str | None = None,
     heldout_template_share: float = 0.2,
     seed: int = 42,
 ) -> pd.DataFrame:
@@ -38,10 +38,15 @@ def assign_splits(
 
     held_templates = pick_heldout_templates(df, heldout_template_share, seed)
     is_held = df["template_id"].map(base_template).isin(held_templates)
-    if heldout_source:
-        is_held |= df["source"] == heldout_source
-    held_groups = set(df.loc[is_held, "_group"])
-    df["split"] = np.where(df["_group"].isin(held_groups), "heldout", "")
+    if isinstance(heldout_sources, str):
+        heldout_sources = [heldout_sources]
+    src = df["source"].str.lower()
+    for pattern in heldout_sources or []:
+        is_held |= src.str.contains(pattern.lower(), regex=False)
+    manual_groups = set(df.loc[df["source"] == "manual", "_group"])
+    held_groups = set(df.loc[is_held, "_group"]) - manual_groups
+    df["split"] = np.where(df["_group"].isin(manual_groups), "manual",
+                           np.where(df["_group"].isin(held_groups), "heldout", ""))
 
     rng = np.random.default_rng(seed)
     rest = df[df["split"] == ""]
@@ -65,7 +70,8 @@ def assign_splits(
             cum += sizes.loc[gid]
     mask = df["split"] == ""
     df.loc[mask, "split"] = df.loc[mask, "_group"].map(mapping)
-    return df.drop(columns="_group")
+    df = df[~((df["split"] == "manual") & (df["source"] != "manual"))]
+    return df.rename(columns={"_group": "group"}).reset_index(drop=True)
 
 
 def check_no_leakage(df: pd.DataFrame, groups: np.ndarray | None = None) -> dict:
@@ -75,6 +81,8 @@ def check_no_leakage(df: pd.DataFrame, groups: np.ndarray | None = None) -> dict
     for i, a in enumerate(names):
         for b in names[i + 1 :]:
             report[f"id:{a}&{b}"] = len(by_split[a] & by_split[b])
+    if groups is None and "group" in df.columns:
+        groups = df["group"].to_numpy()
     if groups is not None:
         g = pd.Series(groups, index=df.index)
         per_group = df.groupby(g)["split"].nunique()

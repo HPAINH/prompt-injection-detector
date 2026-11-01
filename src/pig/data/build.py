@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pig.config import Config, set_seed
+from pig.config import DEFAULT_CONFIG, Config, set_seed
 from pig.data.clean import clean, drop_label_conflicting_groups, near_duplicate_groups
 from pig.data.generators import generate_all
-from pig.data.sources import load_hf_sources
+from pig.data.sources import load_hf_sources, load_manual
 from pig.data.split import assign_splits, check_no_leakage
 
 log = logging.getLogger(__name__)
@@ -30,13 +30,20 @@ def dataset_stats(df: pd.DataFrame) -> dict:
     }
 
 
+def manual_path(cfg: Config) -> Path:
+    p = Path(cfg["data"]["manual_file"])
+    return p if p.is_absolute() else DEFAULT_CONFIG.parents[1] / p
+
+
 def build_dataset(cfg: Config, use_hf: bool = True, embedder=None, translated: pd.DataFrame | None = None,
                   out_dir: str | Path | None = None) -> tuple[pd.DataFrame, dict]:
     set_seed(cfg["seed"])
     d = cfg["data"]
-    parts = [generate_all(cfg, cfg["seed"])]
+    manual = load_manual(manual_path(cfg)) if d.get("manual_file") else None
+    parts = [manual] if manual is not None and len(manual) else []
+    parts.append(generate_all(cfg, cfg["seed"]))
     if use_hf:
-        parts.append(load_hf_sources(d["max_per_hf_source"], cfg["seed"]))
+        parts.append(load_hf_sources(d["max_per_hf_source"], cfg["seed"], d.get("max_per_source_overrides")))
     if translated is not None and len(translated):
         parts.append(translated)
     raw = pd.concat(parts, ignore_index=True)
@@ -50,11 +57,11 @@ def build_dataset(cfg: Config, use_hf: bool = True, embedder=None, translated: p
     else:
         groups = np.arange(len(df))
 
-    df = assign_splits(df, groups, tuple(d["split"]), d["heldout_source"], d["heldout_template_share"], cfg["seed"])
-    leakage = check_no_leakage(df, groups)
+    df = assign_splits(df, groups, tuple(d["split"]), d["heldout_sources"], d["heldout_template_share"], cfg["seed"])
+    leakage = check_no_leakage(df)
     stats = dataset_stats(df)
     stats["leakage"] = leakage
-    stats["near_dup_groups_merged"] = int(len(df) - len(set(groups)))
+    stats["near_dup_groups_merged"] = int(len(df) - df["group"].nunique())
 
     if out_dir:
         out = Path(out_dir)
