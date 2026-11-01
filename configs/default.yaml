@@ -1,0 +1,64 @@
+seed: 42
+
+paths:
+  root: .
+  raw: data/raw
+  processed: data/processed
+  models: models
+  cache: cache
+  reports: reports
+  logs: logs
+
+data:
+  max_len: 2000
+  min_len: 3
+  near_dup_threshold: 0.95
+  split: [0.70, 0.15, 0.15]
+  heldout_template_share: 0.2
+  heldout_source: Lakera/gandalf_ignore_instructions
+  max_per_hf_source: 1500
+  generator:
+    ru_attacks: 1000
+    en_attacks: 300
+    ru_benign: 1100
+    en_benign: 200
+    hard_negatives_ru: 300
+    hard_negatives_en: 100
+
+task_description:
+  ru: "Ассистент поддержки клиентов банка: банковские карты, переводы, платежи, кредиты, вклады, мобильное приложение, тарифы и лимиты."
+  en: "Bank customer support assistant: bank cards, transfers, payments, loans, deposits, mobile app, fees and limits."
+
+models:
+  tfidf:
+    word_ngrams: [1, 2]
+    char_ngrams: [2, 5]
+    max_features: 50000
+    C: 4.0
+  semantic:
+    encoder: intfloat/multilingual-e5-small
+    prefix: "query: "
+    batch_size: 64
+    window: 12
+    stride: 6
+    C: 2.0
+  transformer:
+    base: cointegrated/rubert-tiny2
+    max_length: 256
+    epochs: 4
+    lr: 5.0e-5
+    batch_size: 32
+    weight_decay: 0.01
+  reference:
+    name: protectai/deberta-v3-base-prompt-injection-v2
+
+threshold:
+  max_fpr: 0.02
+
+cascade:
+  max_m3_share: 0.30
+
+service:
+  detector: semantic
+  max_text_len: 2000
+  refusal: "Запрос отклонён системой безопасности. Переформулируйте вопрос по теме обслуживания."

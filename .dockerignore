@@ -1,0 +1,9 @@
+data
+cache
+reports
+logs
+notebooks
+tests
+.git
+**/__pycache__
+models/M3_transformer/checkpoints
